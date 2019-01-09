@@ -1,0 +1,504 @@
+
+
+
+
+CSUF Botnet Team                                           R. Kretschmar
+Internet-Draft                                                      CSUF
+Expires: April 4, 2019                                      October 2018
+
+
+                    Proof of Concept Botnet Protocol
+                          draft-poc-botnet-01
+
+Abstract
+
+   This is an RFC for a protocol that our botnet is going to use.  There
+   will be the two main protocols.  One for the single Command and
+   Control (C&C) server, and a protocol for the multiple "client" bots.
+   This uniform language is how they will talk to one another allowing
+   the C&C server to see if there which bots are still "alive" and allow
+   the C&C to issue attack and stop directives to the bots out there.
+   There are going to be two logical network topologies that we are
+   going to be working with, for more information see section
+   "Topologies".
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at http://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on April 4, 2019.
+
+Copyright Notice
+
+   Copyright (c) 2018 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 1]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  Topography  . . . . . . . . . . . . . . . . . . . . . . . . .   2
+     2.1.  Physcial Topography . . . . . . . . . . . . . . . . . . .   3
+     2.2.  Logical Topography  . . . . . . . . . . . . . . . . . . .   3
+       2.2.1.  Infection Topography  . . . . . . . . . . . . . . . .   3
+       2.2.2.  Communication Topography  . . . . . . . . . . . . . .   4
+   3.  Command and Control Server Protocol . . . . . . . . . . . . .   4
+     3.1.  Bot Handling  . . . . . . . . . . . . . . . . . . . . . .   5
+     3.2.  Server-side Infection Handling  . . . . . . . . . . . . .   5
+     3.3.  Distributed Denial of Service Attack  . . . . . . . . . .   5
+     3.4.  Server-side Commands  . . . . . . . . . . . . . . . . . .   6
+   4.  Bot Client Protocol . . . . . . . . . . . . . . . . . . . . .   7
+     4.1.  The Infection Protocol  . . . . . . . . . . . . . . . . .   8
+     4.2.  The HELO Message  . . . . . . . . . . . . . . . . . . . .   8
+     4.3.  The ROLL Message  . . . . . . . . . . . . . . . . . . . .   8
+     4.4.  The STOP Message  . . . . . . . . . . . . . . . . . . . .   8
+     4.5.  Client-side Commands  . . . . . . . . . . . . . . . . . .   8
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .   9
+
+1.  Introduction
+
+   To help showcase our presentation of "The Anatomy of a Botnet", we
+   must first implement a botnet including a working protocol that the
+   will be a unified language that our Command and Control server and
+   our client bots can talk to each other with.  This is important as
+   any protocol is to achieve a proof of concept that will be the
+   underpinning of this project.
+
+   We've developed a developed two network topographies that our bots
+   will follow as they spread, and the method by which the bots will
+   create that topography.  Originally for this project, we want to use
+   Python3 with no added packages since we want the malware to be able
+   to spread with a low footprint.  However, the base install of Python3
+   did not give us the tools we needed for the project, so it'll include
+   non-standard libraries that will help with infection.
+
+2.  Topography
+
+   As mentioned before our botnet uses two logical topographies and one
+   physical one.
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 2]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+2.1.  Physcial Topography
+
+   Probably the easiest topography to explain is the physical
+   topography.  We are going to use the internet as a means of spread
+   and communication.  Since we don't have any control over the physical
+   topography of the internet, we are at the mercy of dead Layer 2
+   links.  However, since our bots spread out, it shouldn't be a problem
+   if we lose contact with some of them over time.  Others will have
+   popped up taking their place.
+
+2.2.  Logical Topography
+
+2.2.1.  Infection Topography
+
+   The Infection Topography is going to a one-way star, or what we were
+   calling a "Brust-and-Bloom", topography.  Our C&C server is going to
+   infect a "Patient 0" machine which, once infected, Patient 0 will try
+   to contact and infect any other machines on its subnet.  Any of those
+   machine that successfully get infected will do the same.  However,
+   once the worm spreads to the next machine, it no longer cares about
+   the past infected computers and will no longer communicate with them.
+
+   So, the infection overview will look like this:
+
+                                        --------
+                                        -C&C    -
+                                        -Server-             -----
+                                        --------             -   -
+                                            |                -   -
+                                            |                -----
+                                            |                 /
+                        -----           ---------       -----/     -----
+                        -   -__________ -Patient-_______-   -______-   -
+                       /-   -           - Zero  -       -   -      -   -
+                      / -----           ---------       -----      -----
+                     /                      |               \
+                 -----                      |                \
+                 -   -                      |               -----
+                 -   -                    -----             -   -
+                 -----                    -   -             -   -
+                                          -   -             -----
+                                          -----
+
+                                 Figure 1
+
+
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 3]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+2.2.2.  Communication Topography
+
+   Since the Infection Topography is done after the infection event, we
+   need another type of topography for communication between the C&C and
+   the bots.  This is a full centerialized, two-way star style where the
+   bots have the C&C servers IP address hard-coded, and after they send
+   the first HELO_C message with their IP address.  After a three-way
+   handshake, there will be full communication between the server and
+   client.  The bots remain agnostic of each other.
+
+   The communication overview looks as follows:
+
+                                           --------
+                                           -      -
+                                           -      -            -----
+                                           --------          __-   -
+                                               |     ______/   -   -
+                                               |    /          -----
+                                               |   /
+                           -----           ---------________-----
+                           -   -__________ -  C&C -         -   -
+                           -   -           - Server-_       -   -
+                           -----        __/--------- \      -----
+                                       /       |      \
+                    -----    _________/        |       \
+                    -   -   /                  |        \  -----
+                    -   -__/                 -----       \_-   -
+                    -----                    -   -         -   -
+                                             -   -         -----
+                                             -----
+
+
+                                 Figure 2
+
+3.  Command and Control Server Protocol
+
+   The Command and Control server will act as a centralized "keeper" of
+   information on the active bots which is covered under the subsection
+   "Bot Handling".  It will act as the first point of infection which
+   will be covered in subsection "Server-Side Infection Handling".  It
+   is also the controller of the bot as any commands will go through
+   this server.  The standard port is the "leet" port 1337 used for
+   communication.
+
+
+
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 4]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+3.1.  Bot Handling
+
+   The server will maintain a list of active bots.  It adds new bots
+   after a newly infected client sends a HELO_C message.  (More about
+   HELO_C under "Bot Client Protocol" -> "HELO_C Message".)  Since the
+   IP address will be the "argument" sent by HELO_C, it'll be able to
+   put the new infected client's address into the list.  That bot is now
+   "enrolled" in our botnet
+
+   The list of bots will be periodically updated as they send a
+   "heartbeat" type version of the HELO_C.  There will have a specific
+   time that they will do this which is a random number obtained at the
+   beginning of infection that is less than a globally known time-to-
+   live.  If they don't provide a heartbeat within that time, the server
+   assumes the link to that bot is dead, and it removes it from the
+   list.
+
+   When the server is ready for an attack Distributed Denial of Service
+   (DDOS) attack, it will send out a roll-call (See: ROLL Message) to
+   all the bots in the active list to which the active bots will
+   respond.  It will then issue the attack.
+
+3.2.  Server-side Infection Handling
+
+   The first logical thing a C&C server should do is infect a Patient
+   Zero system -- effectively enrolling it into our botnet.  Infection
+   handling can happen many different ways depending on what the creator
+   of the botnet wants to accomplish.  Our system, since just a proof of
+   concept, will try to infect a single system by copying over the
+   Python bot code to the victim's machine.  It will then wait one
+   minute (60 seconds) for a HELO_C reply.  The system of transmission
+   for the code will be via SCP with credentials stolen with an SSH
+   brute force attack.  Once Patient Zero is set loose, it will then
+   wait for incoming HELO_Cs from other infected systems, or wait for
+   user input to attack a system.
+
+3.3.  Distributed Denial of Service Attack
+
+   The proof of concept attack that our service will employ is the
+   Distributed Denial of Service (DDoS) attack.  Although, it could be
+   extensible to have a user choose from multiple attacks such as
+   keylogging or stealing of credentials.  The DDoS attack will use the
+   different bots take an IP address of a victim and send it either a
+   lot of traffic or malformed traffic in hopes of shutting down
+   communication of the system with the outside world.  I.E.  Breaking
+   the Availablity in the CIA model.
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 5]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+   Our method to accomplish this will be a Syn Flood.  The Syn Flood
+   attack is a way of exploiting the fact of the SYN, SYN/ACK, ACK three
+   way handshake that is nessessary in TCP ends with the client sending
+   the ACK packet back.  If the client does not do this, then the server
+   hangs waiting for it until it timeouts, and that will mean either a
+   port or some over resource like a pool of allowed active connections
+   will be drained.  If you have multiple bots do this to a server then
+   it will likely stop any legitimate traffic from getting through.
+
+   This attack will continue until the user controlling the C&C server
+   sends a STOP command to the bots.  In which case, all of the bots
+   will stop the attack.
+
+3.4.  Server-side Commands
+
+   The server-side commands/messages are the backbone of the protocol,
+   and can be used in the format:
+
+   COMMAND::ARGUMENT_0::ARGUMENT_1::...::ARGUMENT_N
+
+   with the double colon (::) being a prdefined delimiter understood by
+   the protocol.  Here are the commands/other features of the protocol
+   on the C&C server side:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 6]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+   +-----------------+-----------+-------------------------------------+
+   | Command/Message | Arguments |             Description             |
+   +-----------------+-----------+-------------------------------------+
+   |       HELO      |    N/A    |    This is the server-side hello    |
+   |                 |           |   message. It is analogous to the   |
+   |                 |           |  client-side HELO_C message. It is  |
+   |                 |           |      used for synchronization.      |
+   |                 |           |                                     |
+   |       ROLL      |    N/A    |    This message is sent out as a    |
+   |                 |           |   "rollcall" to any avilable bots   |
+   |                 |           |  before the ATCK_0 message is send  |
+   |                 |           |    out to the bots. It's used for   |
+   |                 |           |  housekeeping by updating the list  |
+   |                 |           |   of live bots before they get the  |
+   |                 |           |          command to strike.         |
+   |                 |           |                                     |
+   |       ATCK      |   The IP  |  This is the actual Syn Flood DDoS  |
+   |                 |  address  |  command. This message will put all |
+   |                 |     of    |  active bots into attack mode until |
+   |                 |  victim's |  they recieve the STOP command. It  |
+   |                 |  machine. | is sent iteratively to all the bots |
+   |                 |           |      in the "active bot list".      |
+   |                 |           |                                     |
+   |       STOP      |    N/A    |   This is the command to stop the   |
+   |                 |           | currect DDoS attack. The message is |
+   |                 |           |  send iteratively down the list of  |
+   |                 |           |    active bots, and tells them to   |
+   |                 |           |          cease the attack.          |
+   +-----------------+-----------+-------------------------------------+
+
+    Note: This table can be extended for other commands/messages in the
+                                  future.
+
+                  Table 1: Table of Server-Side Commands
+
+4.  Bot Client Protocol
+
+   The Bot Client is a client computer that has been successfully
+   infected.  There will be many of these (hopefully) registered into
+   our botnet.  Its standard port is also that of 1337.  Once a computer
+   is infected, it will have two main operations in idle mode.  To send
+   a HELO heartbeat message every five minutes and to wait until it
+   receives a ROLL message and a subsequent ATCK message.
+
+
+
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 7]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+4.1.  The Infection Protocol
+
+   After a computer get infected, the first thing that happenes is a
+   search with nmap to scan the subnet that bot in on to look for other
+   machines to infect.  After it does, it tries the same SSH
+   bruteforcing with the credentials list to see which ones work.  If it
+   finds a set of credentials that works, it will use them to copy
+   itself over to the new victim.  After this initial spread, it will
+   then start its main work.  That of the heartbeat, and waiting for
+   attack instructions.
+
+4.2.  The HELO Message
+
+   The bot will send the HELO message to the C&C server when it is done
+   infecting a victim's computer and ready to take commands.  This will
+   have the server put the IP address in the master list of active bots
+   that the server currently knows about.
+
+4.3.  The ROLL Message
+
+   This is a message sent out to the active bots the server thinks are
+   still enrolled.  Of course, we must also know about the truth of the
+   consistently of the list of currently enrolled bots, so the rollcall
+   (ROLL) will give us a current version of that list before an attack.
+   Once the bots send out a REDY or BUSY in response.  Those that are
+   REDY are enrolled in a new list for the attack.
+
+4.4.  The STOP Message
+
+   When the STOP message is received, the current attack, usually a DDoS
+   attack, is stopped.
+
+4.5.  Client-side Commands
+
+   The client-side messages are the also backbone of the protocol, and
+   can be used in response to a server side command/message.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 8]
+
+Internet-Draft      Proof of Concept Botnet Protocol        October 2018
+
+
+   +---------+-----------+---------------------------------------------+
+   | Message | Arguments |                 Description                 |
+   +---------+-----------+---------------------------------------------+
+   |   HELO  |    N/A    |  This is the client-side hello message. It  |
+   |         |           |     is analogous to the server-side HELO    |
+   |         |           |   message. It is used for synchronization.  |
+   |         |           |                                             |
+   |   REDY  |    N/A    | This message is one of the two responses to |
+   |         |           |     the ROLL message from the server. It    |
+   |         |           |     indicates that this bot is ready for    |
+   |         |           |                   action.                   |
+   |         |           |                                             |
+   |   BUSY  |    N/A    | This message is one of the two responses to |
+   |         |           |     the ROLL message from the server. It    |
+   |         |           |     indicates that this bot is busy with    |
+   |         |           |         another attack at the time.         |
+   +---------+-----------+---------------------------------------------+
+
+    Note: This table can be extended for other commands/messages in the
+                                  future.
+
+                  Table 2: Table of Client-Side Commands
+
+Author's Address
+
+   Robert J. Kretschmar III
+   California State University, Fullerton
+
+   Email: armersuender@csu.fullerton.edu
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Kretschmar                Expires April 4, 2019                 [Page 9]
